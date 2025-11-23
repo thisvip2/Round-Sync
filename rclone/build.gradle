@@ -178,26 +178,45 @@ task createRcloneModule(type: Exec) {
     commandLine 'go', 'mod', 'init', 'rclone'
 }
 
+// [Parte precedente del file invariata...]
+
 task checkoutRclone(dependsOn: createRcloneModule) {
     doLast {
         // --- CONFIGURAZIONE REPOSITORY AUTOMATICA ---
         def REPO_URL = "https://github.com/gulp79/rclone-extra.git"
-        def REPO_BRANCH = "android-integration" // <--- Cambia in "master" se necessario
+        // MODIFICA: Cambiato da 'android-integration' a 'master' poiché il branch vecchio non esiste.
+        // Se usi un branch diverso (es. 'main' o 'fix/qualcosa'), aggiorna questa riga.
+        def REPO_BRANCH = "master" 
 
         println ">>> RICERCA ULTIMO COMMIT su ${REPO_BRANCH} di ${REPO_URL}..."
 
         // Esegui 'git ls-remote' per trovare l'hash del branch
         def gitOutput = new ByteArrayOutputStream()
-        exec {
-            commandLine 'git', 'ls-remote', REPO_URL, REPO_BRANCH
-            standardOutput = gitOutput
+        def gitError = new ByteArrayOutputStream() // Catturiamo anche gli errori
+        
+        try {
+            exec {
+                commandLine 'git', 'ls-remote', REPO_URL, REPO_BRANCH
+                standardOutput = gitOutput
+                errorOutput = gitError
+            }
+        } catch (Exception e) {
+            println ">>> ATTENZIONE: Errore durante git ls-remote: ${e.message}"
         }
         
         // Estrai l'SHA del commit (il primo elemento della riga)
-        def latestSha = gitOutput.toString().split('\t')[0].trim()
+        def outputString = gitOutput.toString().trim()
+        def latestSha = ""
+        
+        if (outputString) {
+            latestSha = outputString.split('\t')[0].trim()
+        }
 
+        // MODIFICA: Gestione errore migliorata
         if (latestSha.isEmpty()) {
-            throw new GradleException("Impossibile trovare l'hash del branch ${REPO_BRANCH}. Verifica il nome del branch.")
+            println ">>> ERRORE GIT: ${gitError.toString()}"
+            throw new GradleException("Impossibile trovare l'hash del branch '${REPO_BRANCH}' su ${REPO_URL}.\n" +
+                "Verifica che il repository esista, sia pubblico e che il branch si chiami correttamente (es. 'master' o 'main').")
         }
         
         // Creazione del target nel formato corretto (@SHA)
@@ -235,6 +254,8 @@ func main() {}
         }
     }
 }
+
+// [Il resto del file tasks buildArm, buildAll, clean rimane invariato...]
 
 task buildArm(dependsOn: checkoutRclone) {
     configure buildRclone('armeabi-v7a')
