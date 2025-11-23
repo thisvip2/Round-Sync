@@ -1,13 +1,8 @@
 name: Android CI Signed
 
 on:
-  workflow_dispatch:
-#  push:
-#    tags:
-#      - '*'
-#    branches:
-#      - master
-#      - main # Aggiunto per compatibilità
+  workflow_dispatch: # Mantenuto: Esecuzione solo manuale dalla UI di GitHub Actions
+#  push:             # Rimosso: Non si avvia automaticamente ad ogni push/tag
 
 jobs:
   build-signed:
@@ -25,7 +20,7 @@ jobs:
         NDK_VER=$(grep -E "^de\.felixnuesse\.extract\.ndkVersion=" gradle.properties | cut -d'=' -f2 | tr -d '[:space:]')
         
         # Fallback se non trova la versione nel file (sicurezza)
-        if [ -z "$GO_VER" ]; then GO_VER="1.25.4"; fi
+        if [ -z "$GO_VER" ]; then GO_VER="1.23.0"; fi
         
         echo "GO_VERSION=$GO_VER" >> $GITHUB_ENV
         echo "NDK_VERSION=$NDK_VER" >> $GITHUB_ENV
@@ -50,24 +45,25 @@ jobs:
       run: |
         echo "y" | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
 
-    # --- DECODIFICA KEYSTORE (Solo se il secret esiste) ---
+    # --- DECODIFICA KEYSTORE (Correzione Errore 'secrets') ---
     - name: Decode Keystore
-      if: ${{ secrets.APP_KEYSTORE_BASE64 != '' }}
+      # FIX: Rimosso il confronto '!= '' per prevenire l'errore Unrecognized named-value
+      if: ${{ secrets.APP_KEYSTORE_BASE64 }} 
       env:
         ENCODED_STRING: ${{ secrets.APP_KEYSTORE_BASE64 }}
       run: |
+        # Decodifica la stringa Base64 in un file reale temporaneo
         echo "$ENCODED_STRING" | base64 --decode > app/release.keystore
 
     # --- BUILD ---
     - name: Build Signed Release APK
       env:
-        # Passa i secrets solo se esistono
+        # Passa i secrets come variabili d'ambiente per Gradle
         CMD_RELEASE_KEYSTORE: release.keystore
         CMD_RELEASE_KEYSTORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
         CMD_RELEASE_KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
         CMD_RELEASE_KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
       run: |
-        # Esegue la build. Se i secrets mancano, Gradle userà la config locale o fallirà la firma se forzata
         ./gradlew assembleOssRelease --stacktrace
 
     # --- UPLOAD ARTIFACTS (Tutte le architetture) ---
