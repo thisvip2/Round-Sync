@@ -2,12 +2,12 @@ name: Android CI Signed
 
 on:
   workflow_dispatch:
-  push:
-    tags:
-      - '*'
-    branches:
-      - master
-      - main # Aggiunto per compatibilità
+#  push:
+#    tags:
+#      - '*'
+#    branches:
+#      - master
+#      - main # Aggiunto per compatibilità
 
 jobs:
   build-signed:
