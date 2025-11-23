@@ -17,9 +17,7 @@
 //  - go 1.20+
 //  - Either Android SDK command-line tools, or the expected NDK version (see gradle.properties).
 
-
 import groovy.json.JsonSlurper
-
 import java.nio.file.Paths
 
 ext {
@@ -28,11 +26,14 @@ ext {
     RCLONE_VERSION = project.properties['de.felixnuesse.extract.rCloneVersion']
     GO_REQ_VERSION = project.properties['de.felixnuesse.extract.goVersion']
     RCLONE_MODULE = 'github.com/rclone/rclone'
-    RCLONE_CUSTOM_VERSION_SUFFIX = '-extract'
+    RCLONE_CUSTOM_VERSION_SUFFIX = '-extra'
 
     PROJECT_DIR = projectDir.absolutePath
     CACHE_PATH = Paths.get(PROJECT_DIR, 'cache').toString()
-    GOPATH = Paths.get(CACHE_PATH, 'gopath').toString()
+    
+    // MODIFICA 1: Separazione GOPATH per evitare conflitti con i moduli
+    GOPATH = Paths.get(PROJECT_DIR, 'gopath_env').toString()
+    
     OUTPUT_BASE_PATH = Paths.get(PROJECT_DIR, '..', 'app', 'lib').toAbsolutePath().toString()
 }
 
@@ -170,8 +171,6 @@ def buildRclone(abi) {
 }
 
 task createRcloneModule(type: Exec) {
-    // We create a dummy go module to be able to checkout our specific rclone
-    // version later on.
     onlyIf { !Paths.get(CACHE_PATH, 'go.mod').toFile().exists() }
     Paths.get(CACHE_PATH).toFile().mkdirs()
     workingDir CACHE_PATH
@@ -179,25 +178,48 @@ task createRcloneModule(type: Exec) {
     commandLine 'go', 'mod', 'init', 'rclone'
 }
 
-task checkoutRclone(type: Exec, dependsOn: createRcloneModule) {
-    workingDir CACHE_PATH
-    environment 'GOPATH', GOPATH
+task checkoutRclone(dependsOn: createRcloneModule) {
+    doLast {
+        // --- SCELTA REPOSITORY ---
+        // OPZIONE A (LOCALE): Punta alla cartella rclone scaricata a fianco
+        //def REPO_TARGET = Paths.get(PROJECT_DIR, '..', '..', 'rclone-extra').toAbsolutePath().toString()
+        
+        // OPZIONE B (ONLINE): Punta direttamente al mio GitHub (scommenta questa e commenta la A)
+        def REPO_TARGET = "github.com/gulp79/rclone-extra@android-integration" 
+        
+		// (Nota: usa @main o @nome_branch alla fine)
+        println ">>> CONFIGURAZIONE BUILD CON: ${REPO_TARGET}"
 
-    def goVersionOutput = new ByteArrayOutputStream()
-    exec{
-        commandLine 'go', 'version'
-        standardOutput = goVersionOutput;
+        // 1. Imposta il REPLACE nel go.mod
+        exec {
+            workingDir CACHE_PATH
+            environment 'GOPATH', GOPATH
+            commandLine 'go', 'mod', 'edit', '-replace', "github.com/rclone/rclone=${REPO_TARGET}"
+        }
+
+        // 2. Crea file Dummy per importare librclone
+        File dummyFile = new File(Paths.get(CACHE_PATH, "dummy.go").toString())
+        dummyFile.write("""package main
+import _ "github.com/rclone/rclone/librclone"
+func main() {}
+""")
+
+        // 3. Esegui Tidy (scarica le basi)
+        exec {
+            workingDir CACHE_PATH
+            environment 'GOPATH', GOPATH
+            commandLine 'go', 'mod', 'tidy'
+        }
+
+        // 4. Forza il download di TUTTE le dipendenze (incluse quelle dei tuoi backend extra)
+        println ">>> RISOLUZIONE DIPENDENZE ESTESE..."
+        exec {
+            workingDir CACHE_PATH
+            environment 'GOPATH', GOPATH
+            // Simuliamo una build scartando l'output per popolare go.sum
+            commandLine 'go', 'build', '-mod=mod', '-v', '-o', '/dev/null', 'github.com/rclone/rclone'
+        }
     }
-
-    if (goVersionOutput.toString().contains(GO_REQ_VERSION)) {
-        println "You are running the required go version."
-    } else {
-        logger.error("The requred go version is: ${GO_REQ_VERSION}")
-        logger.error( "You are running: ${goVersionOutput}")
-    }
-    println "You are building rclone v${RCLONE_VERSION}"
-
-    commandLine 'go', 'get', '-v', '-d', "${RCLONE_MODULE}@v${RCLONE_VERSION}"
 }
 
 task buildArm(dependsOn: checkoutRclone) {
@@ -222,14 +244,15 @@ task buildAll {
 
 task clean {
     doLast {
-        exec {
-            environment 'GOPATH', GOPATH
-            commandLine 'go', 'clean', '-cache', '-testcache', '-modcache', '-fuzzcache'
-        }
+        try {
+            exec {
+                environment 'GOPATH', GOPATH
+                commandLine 'go', 'clean', '-modcache', '-cache'
+            }
+        } catch (ignored) {}
         delete CACHE_PATH
-        delete fileTree(OUTPUT_BASE_PATH).matching {
-            include '**/librclone.so'
-        }
+        delete GOPATH // Cancella anche la cartella gopath_env
+        delete fileTree(OUTPUT_BASE_PATH).matching { include '**/librclone.so' }
     }
 }
 
