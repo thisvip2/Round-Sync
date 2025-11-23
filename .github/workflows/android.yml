@@ -25,7 +25,7 @@ jobs:
         NDK_VER=$(grep -E "^de\.felixnuesse\.extract\.ndkVersion=" gradle.properties | cut -d'=' -f2 | tr -d '[:space:]')
         
         # Fallback se non trova la versione nel file (sicurezza)
-        if [ -z "$GO_VER" ]; then GO_VER="1.23.0"; fi
+        if [ -z "$GO_VER" ]; then GO_VER="1.25.4"; fi
         
         echo "GO_VERSION=$GO_VER" >> $GITHUB_ENV
         echo "NDK_VERSION=$NDK_VER" >> $GITHUB_ENV
