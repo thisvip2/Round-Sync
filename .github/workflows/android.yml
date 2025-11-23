@@ -52,7 +52,7 @@ jobs:
         echo "y" | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --install "ndk;${{ env.NDK_VERSION }}"
 
     # --- DECODIFICA KEYSTORE ---
-- name: Decode Keystore
+    - name: Decode Keystore
       if: ${{ env.APP_KEYSTORE_BASE64 }} 
       run: |
         # Decodifica il file keystore nella radice del progetto.
