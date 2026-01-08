@@ -1,40 +1,40 @@
 name: Android CI Signed
 
-on:
-  workflow_dispatch: # Mantiene solo l'esecuzione manuale
+on: 
+  workflow_dispatch: # Keep only manual execution
 
 jobs:
   build-signed:
     runs-on: ubuntu-latest
     
-    # Rendiamo le variabili disponibili a tutto il job
+    # Make variables available to the entire job
     env:
       APP_KEYSTORE_BASE64: ${{ secrets.APP_KEYSTORE_BASE64 }}
       KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
       KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+      KEY_PASSWORD:  ${{ secrets.KEY_PASSWORD }}
 
     steps:
     - name: Checkout sources
-      uses: actions/checkout@v4
+      uses:  actions/checkout@v4
 
-    # ... (Setup Versioni, JDK, Go, Gradle, NDK rimangono uguali) ...
-    # (Ometto per brevità, copia quelli che avevi già)
+    # ...  (Setup for Versions, JDK, Go, Gradle, NDK remain the same) ...
+    # (Omitted for brevity, copy what you had before)
     
     # ---------------------------------------------------------
-    # CORREZIONE QUI SOTTO
+    # FIX BELOW
     # ---------------------------------------------------------
 
     - name: Decode Keystore
       if: ${{ env.APP_KEYSTORE_BASE64 }} 
       run: |
-        # 1. Creiamo il file DENTRO la cartella 'app'
-        echo "$APP_KEYSTORE_BASE64" | base64 --decode > app/release.keystore
+        # 1. Create the file INSIDE the 'app' folder
+        echo "$APP_KEYSTORE_BASE64" | base64 --decode > app/release. keystore
 
     - name: Build Signed Release APK
       env:
-        # 2. Diciamo a Gradle che il file si chiama 'release.keystore'.
-        # Poiché build.gradle è dentro 'app/', cercherà in 'app/release.keystore', dove lo abbiamo appena messo.
+        # 2. Tell Gradle that the file is called 'release. keystore'. 
+        # Since build.gradle is inside 'app/', it will look in 'app/release.keystore', where we just placed it.
         CMD_RELEASE_KEYSTORE: release.keystore
         CMD_RELEASE_KEYSTORE_PASSWORD: ${{ env.KEY_STORE_PASSWORD }}
         CMD_RELEASE_KEY_ALIAS: ${{ env.KEY_ALIAS }}
@@ -42,12 +42,12 @@ jobs:
       run: |
         ./gradlew assembleOssRelease --stacktrace
 
-    # --- UPLOAD ARTIFACTS (Tutte le architetture) ---
-    # Nota: L'upload è per la release build (oss/release)
+    # --- UPLOAD ARTIFACTS (All architectures) ---
+    # Note: The upload is for the release build (oss/release)
 
     - name: Upload APK (Universal)
       uses: actions/upload-artifact@v6
-      with:
+      with: 
         name: round-sync-universal
         path: app/build/outputs/apk/oss/release/*-oss-universal-release.apk
         if-no-files-found: warn
@@ -55,13 +55,13 @@ jobs:
     - name: Upload APK (Arm64)
       uses: actions/upload-artifact@v6
       with:
-        name: round-sync-arm64
+        name:  round-sync-arm64
         path: app/build/outputs/apk/oss/release/*-oss-arm64-v8a-release.apk
         if-no-files-found: warn
 
     - name: Upload APK (Armv7)
       uses: actions/upload-artifact@v6
-      with:
+      with: 
         name: round-sync-armeabi
         path: app/build/outputs/apk/oss/release/*-oss-armeabi-v7a-release.apk
         if-no-files-found: warn
@@ -69,13 +69,13 @@ jobs:
     - name: Upload APK (x86)
       uses: actions/upload-artifact@v6
       with:
-        name: round-sync-x86
+        name:  round-sync-x86
         path: app/build/outputs/apk/oss/release/*-oss-x86-release.apk
         if-no-files-found: warn
 
     - name: Upload APK (x86_64)
       uses: actions/upload-artifact@v6
       with:
-        name: round-sync-x64
+        name:  round-sync-x64
         path: app/build/outputs/apk/oss/release/*-oss-x86_64-release.apk
         if-no-files-found: warn
