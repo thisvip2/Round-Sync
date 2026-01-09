@@ -27,7 +27,7 @@ jobs:
       - name: Checkout sources
         uses: actions/checkout@v4
 
-      - name: Extract version from tag
+      - name: Extract version from tag and update build.gradle
         id: get_version
         run: |
           # Remove 'v' prefix from tag to get version
@@ -36,20 +36,23 @@ jobs:
           echo "version=${VERSION}" >> $GITHUB_OUTPUT
           echo "Building version: ${VERSION}"
           
-          # Extract current version info from build.gradle for verification
+          # Extract current version info from build.gradle
           GRADLE_VERSION=$(grep -E "^\s*versionName\s+" app/build.gradle | sed -E "s/.*versionName\s+'([^']+)'.*/\1/")
           GRADLE_VERSION_CODE=$(grep -E "^\s*versionCode\s+" app/build.gradle | sed -E 's/.*versionCode\s+([0-9]+).*/\1/')
-          echo "Tag version: ${VERSION}"
-          echo "Gradle versionName: ${GRADLE_VERSION}"
-          echo "Gradle versionCode: ${GRADLE_VERSION_CODE}"
+          echo "Current Gradle versionName: ${GRADLE_VERSION}"
+          echo "Current Gradle versionCode: ${GRADLE_VERSION_CODE}"
           
-          # Verify tag version matches gradle versionName
+          # Update versionName in build.gradle to match tag version
           if [ "${VERSION}" != "${GRADLE_VERSION}" ]; then
-            echo "ERROR: Tag version (${VERSION}) does not match gradle versionName (${GRADLE_VERSION})"
-            echo "Please update versionName in app/build.gradle to match the tag before releasing"
-            exit 1
+            echo "Updating versionName from '${GRADLE_VERSION}' to '${VERSION}'"
+            sed -i "s/versionName '[^']*'/versionName '${VERSION}'/" app/build.gradle
+            
+            # Verify the update
+            NEW_VERSION=$(grep -E "^\s*versionName\s+" app/build.gradle | sed -E "s/.*versionName\s+'([^']+)'.*/\1/")
+            echo "Updated versionName to: ${NEW_VERSION}"
+          else
+            echo "✓ Version already matches tag"
           fi
-          echo "✓ Version verification passed"
 
       - name: Read versions from gradle.properties
         run: |

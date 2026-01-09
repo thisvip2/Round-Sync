@@ -76,17 +76,18 @@ You can then build the app normally from Android Studio or from CLI by running:
 
 To create a new release of Round Sync:
 
-1. Update the `versionCode` and `versionName` in `app/build.gradle` to the new version
-2. Commit the version changes to the main branch
-3. Create a new tag matching the version number (e.g., `v2.5.7` for version 2.5.7)
+1. Optionally update the `versionCode` in `app/build.gradle` if needed (the workflow will automatically update `versionName`)
+2. Commit any changes to the main branch
+3. Create a new tag with the desired version number (e.g., `v2.5.7` or `v2.5.7-bclone`)
 4. Push the tag to GitHub: `git push origin v2.5.7`
 5. The `android-release.yml` workflow will automatically:
+   - Update the `versionName` in `app/build.gradle` to match the tag
    - Build signed APKs for all architectures
    - Create a GitHub release associated with the tag
    - Upload all APK variants to the release
    - Generate release notes automatically
 
-The tag name should match the format `v<version>` (e.g., `v2.5.7`) where `<version>` matches the `versionName` in `app/build.gradle`. The workflow will extract the version from the tag and use it to name the APK files.
+The tag name should match the format `v<version>` (e.g., `v2.5.7` or `v2.5.7-bclone`). The workflow will automatically extract the version from the tag and update `versionName` in `app/build.gradle` before building.
 
 ## Submitting a PR
 Here are a few tips on getting your PR merged:
