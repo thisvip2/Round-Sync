@@ -1,84 +1,131 @@
 name: Android CI Signed
 
-on: 
-  workflow_dispatch: # Keep only manual execution
+on:
+  push:
+  workflow_dispatch:
 
 jobs:
   build-signed:
     runs-on: ubuntu-latest
-    
+
     # Make variables available to the entire job
     env:
       APP_KEYSTORE_BASE64: ${{ secrets.APP_KEYSTORE_BASE64 }}
       KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
       KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-      KEY_PASSWORD:  ${{ secrets.KEY_PASSWORD }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
     steps:
-    - name: Checkout sources
-      uses:  actions/checkout@v4
+      - name: Checkout sources
+        uses: actions/checkout@v4
 
-    # ...  (Setup for Versions, JDK, Go, Gradle, NDK remain the same) ...
-    # (Omitted for brevity, copy what you had before)
-    
-    # ---------------------------------------------------------
-    # FIX BELOW
-    # ---------------------------------------------------------
+      - name: Read versions from gradle.properties
+        run: |
+          GO_VERSION=$(grep -E "^de\.felixnuesse\.extract\.goVersion=" gradle.properties | cut -d'=' -f2)
+          NDK_VERSION=$(grep -E "^de\.felixnuesse\.extract\.ndkVersion=" gradle.properties | cut -d'=' -f2)
+          RCLONE_VERSION=$(grep -E "^de\.felixnuesse\.extract\.rCloneVersion=" gradle.properties | cut -d'=' -f2)
+          echo "GO_VERSION=${GO_VERSION}" >> $GITHUB_ENV
+          echo "NDK_VERSION=${NDK_VERSION}" >> $GITHUB_ENV
+          echo "RCLONE_VERSION=${RCLONE_VERSION}" >> $GITHUB_ENV
 
-    - name: Decode Keystore
-      run: |
-        if [ -z "$APP_KEYSTORE_BASE64" ]; then
-          echo "ERROR: APP_KEYSTORE_BASE64 secret is not set!"
-          exit 1
-        fi
-        echo "$APP_KEYSTORE_BASE64" | base64 -d > app/release.keystore
-        ls -lh app/release.keystore  # Verify file was created
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: gradle
 
-    - name: Build Signed Release APK
-      env:
-        # 2. Tell Gradle that the file is called 'release. keystore'. 
-        # Since build.gradle is inside 'app/', it will look in 'app/release.keystore', where we just placed it.
-        CMD_RELEASE_KEYSTORE: release.keystore
-        CMD_RELEASE_KEYSTORE_PASSWORD: ${{ env.KEY_STORE_PASSWORD }}
-        CMD_RELEASE_KEY_ALIAS: ${{ env.KEY_ALIAS }}
-        CMD_RELEASE_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
-      run: |
-        ./gradlew assembleOssRelease --stacktrace
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '${{ env.GO_VERSION }}'
+          cache: true
+          cache-dependency-path: |
+            rclone/cache/go.sum
+            rclone/gopath_env/pkg/mod/cache/download
 
-    # --- UPLOAD ARTIFACTS (All architectures) ---
-    # Note: The upload is for the release build (oss/release)
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
 
-    - name: Upload APK (Universal)
-      uses: actions/upload-artifact@v6
-      with: 
-        name: round-sync-universal
-        path: app/build/outputs/apk/oss/release/*-oss-universal-release.apk
-        if-no-files-found: warn
+      - name: Cache NDK
+        id: cache-ndk
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
+          key: ndk-${{ env.NDK_VERSION }}
 
-    - name: Upload APK (Arm64)
-      uses: actions/upload-artifact@v6
-      with:
-        name:  round-sync-arm64
-        path: app/build/outputs/apk/oss/release/*-oss-arm64-v8a-release.apk
-        if-no-files-found: warn
+      - name: Install NDK
+        if: steps.cache-ndk.outputs.cache-hit != 'true'
+        run: |
+          sdkmanager "ndk;${NDK_VERSION}"
 
-    - name: Upload APK (Armv7)
-      uses: actions/upload-artifact@v6
-      with: 
-        name: round-sync-armeabi
-        path: app/build/outputs/apk/oss/release/*-oss-armeabi-v7a-release.apk
-        if-no-files-found: warn
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+            rclone/gopath_env
+            rclone/cache
+          key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-rclone-${{ env.RCLONE_VERSION }}-${{ hashFiles('rclone/build.gradle') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ env.GO_VERSION }}-rclone-${{ env.RCLONE_VERSION }}-
+            ${{ runner.os }}-go-${{ env.GO_VERSION }}-
 
-    - name: Upload APK (x86)
-      uses: actions/upload-artifact@v6
-      with:
-        name:  round-sync-x86
-        path: app/build/outputs/apk/oss/release/*-oss-x86-release.apk
-        if-no-files-found: warn
+      - name: Decode Keystore
+        run: |
+          if [ -z "$APP_KEYSTORE_BASE64" ]; then
+            echo "ERROR: APP_KEYSTORE_BASE64 secret is not set!"
+            exit 1
+          fi
+          echo "$APP_KEYSTORE_BASE64" | base64 -d > app/release.keystore
+          ls -lh app/release.keystore
 
-    - name: Upload APK (x86_64)
-      uses: actions/upload-artifact@v6
-      with:
-        name:  round-sync-x64
-        path: app/build/outputs/apk/oss/release/*-oss-x86_64-release.apk
-        if-no-files-found: warn
+      - name: Build Signed Release APK
+        env:
+          CMD_RELEASE_KEYSTORE: release.keystore
+          CMD_RELEASE_KEYSTORE_PASSWORD: ${{ env.KEY_STORE_PASSWORD }}
+          CMD_RELEASE_KEY_ALIAS: ${{ env.KEY_ALIAS }}
+          CMD_RELEASE_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleOssRelease --stacktrace
+
+      - name: Upload APK (Universal)
+        uses: actions/upload-artifact@v4
+        with:
+          name: round-sync-universal
+          path: app/build/outputs/apk/oss/release/*-oss-universal-release.apk
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Upload APK (Arm64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: round-sync-arm64
+          path: app/build/outputs/apk/oss/release/*-oss-arm64-v8a-release.apk
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Upload APK (Armv7)
+        uses: actions/upload-artifact@v4
+        with:
+          name: round-sync-armeabi
+          path: app/build/outputs/apk/oss/release/*-oss-armeabi-v7a-release.apk
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Upload APK (x86)
+        uses: actions/upload-artifact@v4
+        with:
+          name: round-sync-x86
+          path: app/build/outputs/apk/oss/release/*-oss-x86-release.apk
+          if-no-files-found: warn
+          retention-days: 1
+
+      - name: Upload APK (x86_64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: round-sync-x64
+          path: app/build/outputs/apk/oss/release/*-oss-x86_64-release.apk
+          if-no-files-found: warn
+          retention-days: 1
