@@ -55,7 +55,7 @@ jobs:
           path: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
           key: ndk-${{ env.NDK_VERSION }}
 
-      - name: Install NDK
+      - name: Install NDK (if not cached)
         if: steps.cache-ndk.outputs.cache-hit != 'true'
         run: |
           sdkmanager "ndk;${NDK_VERSION}"
