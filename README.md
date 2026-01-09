@@ -4,9 +4,8 @@
 
 
 > ⚠️ **Unofficial Fork Disclaimer**  
-> This is an **unofficial fork** of [gulp79's Round Sync fork](https://github.com/gulp79/Round-Sync), which itself is a fork of [newhinton's Round Sync - Rclone for Android](https://github.com/newhinton/Round-Sync).
-> This fork maintains the additional enhancements such as **Alist**, **Alldebrid**, **iCloud Photos**, **Teldrive** and **Terabox** support from gulp79's fork.
-> All the backends are from [rclone-extra](https://github.com/gulp79/rclone-extra).
+> This is an **unofficial fork** of [newhinton's Round Sync - Rclone for Android](https://github.com/newhinton/Round-Sync).
+> This fork uses [rclone-extra](https://github.com/gulp79/rclone-extra) as the rclone dependency (originally swapped by [gulp79](https://github.com/gulp79/Round-Sync)). Since rclone-extra is downstream from bclone, this represents a "bclone flavor" of Round Sync with support for **Alist**, **Alldebrid**, **iCloud Photos**, **Teldrive** and **Terabox**.
 > I am **not affiliated with the upstream maintainers**, and this fork **does not intend to be malicious or harmful** in any way.  
 > Please **read the source code** if you're unsure or want to verify that it behaves as described.  
 > Contributions, feedback, and scrutiny are welcome.
