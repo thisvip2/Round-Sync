@@ -1,23 +1,15 @@
-name: Android CI Signed
+name: Test Build CI
 
 on:
   push:
+    branches-ignore:
+      - 'master'
+      - 'main'
   workflow_dispatch:
 
-concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
-  build-signed:
+  build-test:
     runs-on: ubuntu-latest
-
-    # Make variables available to the entire job
-    env:
-      APP_KEYSTORE_BASE64: ${{ secrets.APP_KEYSTORE_BASE64 }}
-      KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
-      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
-      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
 
     steps:
       - name: Checkout sources
@@ -43,7 +35,10 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '${{ env.GO_VERSION }}'
-          cache: false
+          cache: true
+          cache-dependency-path: |
+            rclone/cache/go.sum
+            rclone/gopath_env/pkg/mod/cache/download
 
       - name: Setup Android SDK
         uses: android-actions/setup-android@v3
@@ -55,7 +50,7 @@ jobs:
           path: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
           key: ndk-${{ env.NDK_VERSION }}
 
-      - name: Install NDK (if not cached)
+      - name: Install NDK
         if: steps.cache-ndk.outputs.cache-hit != 'true'
         run: |
           sdkmanager "ndk;${NDK_VERSION}"
@@ -66,65 +61,47 @@ jobs:
           path: |
             ~/go/pkg/mod
             ~/.cache/go-build
+            rclone/gopath_env
+            rclone/cache
           key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-rclone-${{ env.RCLONE_VERSION }}-${{ hashFiles('rclone/build.gradle') }}
           restore-keys: |
             ${{ runner.os }}-go-${{ env.GO_VERSION }}-rclone-${{ env.RCLONE_VERSION }}-
             ${{ runner.os }}-go-${{ env.GO_VERSION }}-
 
-      - name: Decode Keystore
-        run: |
-          if [ -z "$APP_KEYSTORE_BASE64" ]; then
-            echo "ERROR: APP_KEYSTORE_BASE64 secret is not set!"
-            exit 1
-          fi
-          echo "$APP_KEYSTORE_BASE64" | base64 -d > app/release.keystore
-          ls -lh app/release.keystore
-
-      - name: Build Signed Release APK
-        env:
-          CMD_RELEASE_KEYSTORE: release.keystore
-          CMD_RELEASE_KEYSTORE_PASSWORD: ${{ env.KEY_STORE_PASSWORD }}
-          CMD_RELEASE_KEY_ALIAS: ${{ env.KEY_ALIAS }}
-          CMD_RELEASE_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
-        run: |
-          ./gradlew assembleOssRelease --stacktrace
+      - name: Build Debug APK
+        run: ./gradlew assembleOssDebug --stacktrace
 
       - name: Upload APK (Universal)
         uses: actions/upload-artifact@v4
         with:
-          name: round-sync-universal
-          path: app/build/outputs/apk/oss/release/*-oss-universal-release.apk
+          name: round-sync-test-universal
+          path: app/build/outputs/apk/oss/debug/*-oss-universal-debug.apk
           if-no-files-found: warn
-          retention-days: 1
 
       - name: Upload APK (Arm64)
         uses: actions/upload-artifact@v4
         with:
-          name: round-sync-arm64
-          path: app/build/outputs/apk/oss/release/*-oss-arm64-v8a-release.apk
+          name: round-sync-test-arm64
+          path: app/build/outputs/apk/oss/debug/*-oss-arm64-v8a-debug.apk
           if-no-files-found: warn
-          retention-days: 1
 
       - name: Upload APK (Armv7)
         uses: actions/upload-artifact@v4
         with:
-          name: round-sync-armeabi
-          path: app/build/outputs/apk/oss/release/*-oss-armeabi-v7a-release.apk
+          name: round-sync-test-armeabi
+          path: app/build/outputs/apk/oss/debug/*-oss-armeabi-v7a-debug.apk
           if-no-files-found: warn
-          retention-days: 1
 
       - name: Upload APK (x86)
         uses: actions/upload-artifact@v4
         with:
-          name: round-sync-x86
-          path: app/build/outputs/apk/oss/release/*-oss-x86-release.apk
+          name: round-sync-test-x86
+          path: app/build/outputs/apk/oss/debug/*-oss-x86-debug.apk
           if-no-files-found: warn
-          retention-days: 1
 
       - name: Upload APK (x86_64)
         uses: actions/upload-artifact@v4
         with:
-          name: round-sync-x64
-          path: app/build/outputs/apk/oss/release/*-oss-x86_64-release.apk
+          name: round-sync-test-x64
+          path: app/build/outputs/apk/oss/debug/*-oss-x86_64-debug.apk
           if-no-files-found: warn
-          retention-days: 1
