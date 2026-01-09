@@ -26,7 +26,7 @@ ext {
     RCLONE_VERSION = project.properties['de.felixnuesse.extract.rCloneVersion']
     GO_REQ_VERSION = project.properties['de.felixnuesse.extract.goVersion']
     RCLONE_MODULE = 'github.com/rclone/rclone'
-    RCLONE_CUSTOM_VERSION_SUFFIX = '-extra'
+    RCLONE_CUSTOM_VERSION_SUFFIX = '-bclone'
 
     PROJECT_DIR = projectDir.absolutePath
     CACHE_PATH = Paths.get(PROJECT_DIR, 'cache').toString()
@@ -183,7 +183,7 @@ task createRcloneModule(type: Exec) {
 task checkoutRclone(dependsOn: createRcloneModule) {
     doLast {
         // --- AUTOMATIC REPOSITORY CONFIGURATION ---
-        def REPO_URL = "https://github.com/gulp79/rclone-extra.git"
+        def REPO_URL = "https://github.com/BenjiThatFoxGuy/bclone.git"
         // MODIFICATION: Changed from 'android-integration' to 'master' because the old branch doesn't exist.
         // If you use a different branch (e.g. 'main' or 'fix/something'), update this line.
         def REPO_BRANCH = "master" 
@@ -220,7 +220,7 @@ task checkoutRclone(dependsOn: createRcloneModule) {
         }
         
         // Create the target in the correct format (@SHA)
-        def REPO_TARGET = "github.com/gulp79/rclone-extra@${latestSha}"
+        def REPO_TARGET = "github.com/BenjiThatFoxGuy/bclone@${latestSha}"
 
         println ">>> BUILD CONFIGURATION WITH: ${REPO_TARGET}"
 
