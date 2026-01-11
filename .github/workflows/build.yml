@@ -1,0 +1,182 @@
+name: Android Release Build
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g. 2.5.7). Leave empty to auto-generate.'
+        required: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-release:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: write   # required for GitHub Release
+
+    env:
+      APP_KEYSTORE_BASE64: ${{ secrets.APP_KEYSTORE_BASE64 }}
+      KEY_STORE_PASSWORD: ${{ secrets.KEY_STORE_PASSWORD }}
+      KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+      KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+
+    steps:
+      - name: Checkout sources
+        uses: actions/checkout@v4
+
+      # -------------------------------
+      # Resolve version (tag / manual)
+      # -------------------------------
+      - name: Resolve version and update build.gradle
+        id: get_version
+        shell: bash
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            VERSION="${GITHUB_REF#refs/tags/v}"
+            TRIGGER="tag"
+          elif [[ -n "${{ github.event.inputs.version }}" ]]; then
+            VERSION="${{ github.event.inputs.version }}"
+            TRIGGER="manual-input"
+          else
+            VERSION="dev-$(date +%Y%m%d%H%M)"
+            TRIGGER="manual-auto"
+          fi
+
+          echo "Trigger type: ${TRIGGER}"
+          echo "VERSION=${VERSION}" >> $GITHUB_ENV
+          echo "version=${VERSION}" >> $GITHUB_OUTPUT
+          echo "Building version: ${VERSION}"
+
+          GRADLE_VERSION=$(grep -E "^\s*versionName\s+" app/build.gradle | sed -E "s/.*versionName\s+'([^']+)'.*/\1/")
+          GRADLE_VERSION_CODE=$(grep -E "^\s*versionCode\s+" app/build.gradle | sed -E 's/.*versionCode\s+([0-9]+).*/\1/')
+
+          echo "Current Gradle versionName: ${GRADLE_VERSION}"
+          echo "Current Gradle versionCode: ${GRADLE_VERSION_CODE}"
+
+          if [ "${VERSION}" != "${GRADLE_VERSION}" ]; then
+            sed -i "s/versionName '[^']*'/versionName '${VERSION}'/" app/build.gradle
+            echo "✓ Updated versionName to ${VERSION}"
+          else
+            echo "✓ versionName already matches"
+          fi
+
+      # -------------------------------
+      # Read toolchain versions
+      # -------------------------------
+      - name: Read versions from gradle.properties
+        shell: bash
+        run: |
+          GO_VERSION=$(grep -E "^de\.felixnuesse\.extract\.goVersion=" gradle.properties | cut -d'=' -f2)
+          NDK_VERSION=$(grep -E "^de\.felixnuesse\.extract\.ndkVersion=" gradle.properties | cut -d'=' -f2)
+          RCLONE_VERSION=$(grep -E "^de\.felixnuesse\.extract\.rCloneVersion=" gradle.properties | cut -d'=' -f2)
+
+          echo "GO_VERSION=${GO_VERSION}" >> $GITHUB_ENV
+          echo "NDK_VERSION=${NDK_VERSION}" >> $GITHUB_ENV
+          echo "RCLONE_VERSION=${RCLONE_VERSION}" >> $GITHUB_ENV
+
+      # -------------------------------
+      # Toolchains
+      # -------------------------------
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          cache: gradle
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '${{ env.GO_VERSION }}'
+          cache: false
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      # -------------------------------
+      # NDK cache
+      # -------------------------------
+      - name: Cache NDK
+        id: cache-ndk
+        uses: actions/cache@v4
+        with:
+          path: ${{ env.ANDROID_HOME }}/ndk/${{ env.NDK_VERSION }}
+          key: ndk-${{ env.NDK_VERSION }}
+
+      - name: Install NDK (if not cached)
+        if: steps.cache-ndk.outputs.cache-hit != 'true'
+        run: sdkmanager "ndk;${NDK_VERSION}"
+
+      # -------------------------------
+      # Go cache
+      # -------------------------------
+      - name: Cache Go modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: ${{ runner.os }}-go-${{ env.GO_VERSION }}-rclone-${{ env.RCLONE_VERSION }}-${{ hashFiles('rclone/build.gradle') }}
+          restore-keys: |
+            ${{ runner.os }}-go-${{ env.GO_VERSION }}-rclone-${{ env.RCLONE_VERSION }}-
+            ${{ runner.os }}-go-${{ env.GO_VERSION }}-
+
+      # -------------------------------
+      # Keystore
+      # -------------------------------
+      - name: Decode Keystore
+        shell: bash
+        run: |
+          if [ -z "$APP_KEYSTORE_BASE64" ]; then
+            echo "ERROR: APP_KEYSTORE_BASE64 is not set"
+            exit 1
+          fi
+          echo "$APP_KEYSTORE_BASE64" | base64 -d > app/release.keystore
+          ls -lh app/release.keystore
+
+      # -------------------------------
+      # Build
+      # -------------------------------
+      - name: Build Signed Release APK
+        env:
+          CMD_RELEASE_KEYSTORE: release.keystore
+          CMD_RELEASE_KEYSTORE_PASSWORD: ${{ env.KEY_STORE_PASSWORD }}
+          CMD_RELEASE_KEY_ALIAS: ${{ env.KEY_ALIAS }}
+          CMD_RELEASE_KEY_PASSWORD: ${{ env.KEY_PASSWORD }}
+        run: |
+          ./gradlew assembleOssRelease --stacktrace
+
+      # -------------------------------
+      # Artifacts
+      # -------------------------------
+      - name: Prepare release artifacts
+        shell: bash
+        run: |
+          mkdir -p release-artifacts
+
+          cp app/build/outputs/apk/oss/release/*-oss-universal-release.apk release-artifacts/roundsync-${VERSION}-universal.apk
+          cp app/build/outputs/apk/oss/release/*-oss-arm64-v8a-release.apk release-artifacts/roundsync-${VERSION}-arm64-v8a.apk
+          cp app/build/outputs/apk/oss/release/*-oss-armeabi-v7a-release.apk release-artifacts/roundsync-${VERSION}-armeabi-v7a.apk
+          cp app/build/outputs/apk/oss/release/*-oss-x86-release.apk release-artifacts/roundsync-${VERSION}-x86.apk
+          cp app/build/outputs/apk/oss/release/*-oss-x86_64-release.apk release-artifacts/roundsync-${VERSION}-x86_64.apk
+
+          ls -lh release-artifacts/
+
+      # -------------------------------
+      # GitHub Release
+      # -------------------------------
+      - name: Upload to GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: release-artifacts/*.apk
+          generate_release_notes: true
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
